@@ -132,6 +132,7 @@ TOKEN: /* SQL Keywords. prefixed with K_ to avoid name clashes */
 |   <K_ANALYZE:"ANALYZE">
 |   <K_AND:"AND">
 |   <K_AND_OPERATOR:"&&">
+|   <K_ANTI:"ANTI">
 |   <K_ANY:"ANY">
 |   <K_APPLY:"APPLY">
 |   <K_ARCHIVE: "ARCHIVE">
@@ -280,6 +281,7 @@ TOKEN: /* SQL Keywords. prefixed with K_ to avoid name clashes */
 |   <K_MINVALUE:"MINVALUE">
 |   <K_MODIFY: "MODIFY">
 |   <K_MOVEMENT: "MOVEMENT">
+|   <K_STORED: "STORED">
 
 /* @todo:
    this collides with SELECT 'yelp'::name ...
@@ -2509,14 +2511,15 @@ Join JoinerExpression() #JoinerExpression:
 
 
     [
-          <K_LEFT> { join.setLeft(true); } [ <K_SEMI> { join.setSemi(true); } | <K_OUTER> { join.setOuter(true); } ]
+          <K_LEFT> { join.setLeft(true); } [ <K_SEMI> { join.setSemi(true); } | <K_OUTER> { join.setOuter(true); } | <K_ANTI> { join.setAnti(true); }]
           |  ( <K_RIGHT> { join.setRight(true); }
              | <K_FULL> { join.setFull(true); }
-           ) [ <K_OUTER> { join.setOuter(true); } ]
+           ) [ <K_OUTER> { join.setOuter(true); } | <K_ANTI> { join.setAnti(true); } ]
         | <K_INNER> { join.setInner(true); }
         | <K_NATURAL> { join.setNatural(true); }
         | <K_CROSS> { join.setCross(true); }
         | <K_OUTER> { join.setOuter(true); }
+        | <K_ANTI> { join.setAnti(true); }
     ]
 
           ( <K_JOIN> | "," { join.setSimple(true); } (<K_OUTER> { join.setOuter(true); } )?
@@ -5244,6 +5247,8 @@ List<String> CreateParameter():
             tk=<K_FALSE> { param.add(tk.image); }
             |
             tk=<K_PARALLEL> { param.add(tk.image); }
+            |
+            <K_STORED> <K_AS> retval=RelObjectName() { param.add("STORED"); param.add("AS"); param.add(retval); }
             |
             (<K_ARRAY_LITERAL> exp=ArrayConstructor(true)) { param.add(exp.toString()); }
             |

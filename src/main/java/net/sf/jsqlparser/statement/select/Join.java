@@ -18,6 +18,7 @@ import net.sf.jsqlparser.schema.Column;
 public class Join extends ASTNodeAccessImpl {
 
     private boolean outer = false;
+    private boolean anti = false;
     private boolean right = false;
     private boolean left = false;
     private boolean natural = false;
@@ -103,6 +104,24 @@ public class Join extends ASTNodeAccessImpl {
         this.apply = apply;
     }
 
+    /**
+     * Whether is a "ANTI" join
+     *
+     * @return true if is a "ANTI" join
+     */
+    public boolean isAnti() {
+        return anti;
+    }
+
+    public Join withAnti(boolean b) {
+        this.setAnti(b);
+        return this;
+    }
+
+    public void setAnti(boolean b) {
+        anti = b;
+    }
+    
     /**
      * Whether is a "SEMI" join
      *
@@ -322,6 +341,8 @@ public class Join extends ASTNodeAccessImpl {
                 builder.append("INNER ");
             } else if (isSemi()) {
                 builder.append("SEMI ");
+            } else if (isAnti()) {
+                builder.append("ANTI ");
             }
 
             if (isStraight()) {
