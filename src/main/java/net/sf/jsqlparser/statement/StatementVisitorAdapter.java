@@ -26,10 +26,12 @@ import net.sf.jsqlparser.statement.delete.Delete;
 import net.sf.jsqlparser.statement.drop.Drop;
 import net.sf.jsqlparser.statement.execute.Execute;
 import net.sf.jsqlparser.statement.grant.Grant;
+import net.sf.jsqlparser.statement.grant.Revoke;
 import net.sf.jsqlparser.statement.insert.Insert;
 import net.sf.jsqlparser.statement.merge.Merge;
 import net.sf.jsqlparser.statement.replace.Replace;
 import net.sf.jsqlparser.statement.select.Select;
+import net.sf.jsqlparser.statement.show.ShowCreateView;
 import net.sf.jsqlparser.statement.show.ShowTablesStatement;
 import net.sf.jsqlparser.statement.truncate.Truncate;
 import net.sf.jsqlparser.statement.update.Update;
@@ -160,6 +162,10 @@ public class StatementVisitorAdapter implements StatementVisitor {
     }
 
     @Override
+    public void visit(ComputeStatsStatement compute) {
+    }
+    
+    @Override
     public void visit(ExplainStatement aThis) {
     }
 
@@ -180,9 +186,13 @@ public class StatementVisitorAdapter implements StatementVisitor {
     }
 
     @Override
-    public void visit(Grant grant) {
+    public void visit(Revoke revoke) {
     }
 
+    @Override
+    public void visit(Grant grant) {
+    }
+    
     @Override
     public void visit(CreateSequence createSequence) {
     }
@@ -233,5 +243,10 @@ public class StatementVisitorAdapter implements StatementVisitor {
 
     @Override
     public void visit(AlterSystemStatement alterSystemStatement) {
+    }
+
+    @Override
+    public void visit(ShowCreateView showCreateView) {
+      
     }
 }

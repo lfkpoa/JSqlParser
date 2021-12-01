@@ -169,6 +169,7 @@ TOKEN: /* SQL Keywords. prefixed with K_ to avoid name clashes */
 |   <K_COMMA: ",">
 |   <K_COMMIT:"COMMIT">
 |   <K_COMMENT:"COMMENT">
+|   <K_COMPUTE:"COMPUTE">
 |   <K_CONNECT:"CONNECT">
 |   <K_CONNECT_BY_ROOT: "CONNECT_BY_ROOT"> 
 |   <K_CONSTRAINT:"CONSTRAINT">
@@ -243,6 +244,7 @@ TOKEN: /* SQL Keywords. prefixed with K_ to avoid name clashes */
 |   <K_IN:"IN">
 |   <K_INCLUDE:"INCLUDE">
 |   <K_INCREMENT:"INCREMENT">
+|   <K_INCREMENTAL:"INCREMENTAL">
 |   <K_INDEX: "INDEX">
 |   <K_INNER:"INNER">
 |   <K_STRAIGHT:"STRAIGHT_JOIN">
@@ -250,6 +252,7 @@ TOKEN: /* SQL Keywords. prefixed with K_ to avoid name clashes */
 |   <K_INTERSECT:"INTERSECT">
 |   <K_INTERVAL:"INTERVAL">
 |   <K_INTO:"INTO">
+|   <K_IREGEXP: "IREGEXP">
 |   <K_IS:"IS">
 |   <K_ISNULL:"ISNULL">
 |   <K_JOIN:"JOIN">
@@ -348,6 +351,7 @@ TOKEN: /* SQL Keywords. prefixed with K_ to avoid name clashes */
 |   <K_RESTRICT: "RESTRICT">
 |   <K_RESTRICTED: "RESTRICTED">
 |   <K_RETURNING: "RETURNING">
+|   <K_REVOKE: "REVOKE">
 |   <K_RIGHT:"RIGHT">
 |   <K_ROLLBACK:"ROLLBACK">
 |   <K_ROW: "ROW">
@@ -371,6 +375,7 @@ TOKEN: /* SQL Keywords. prefixed with K_ to avoid name clashes */
 |   <K_SKIP: "SKIP">
 |   <K_SOME:"SOME">
 |   <K_START:"START">
+|   <K_STATS:"STATS">
 |   <K_SUSPEND:"SUSPEND">
 |   <K_SWITCH: "SWITCH">
 |   <K_SYNONYM:"SYNONYM">
@@ -610,6 +615,9 @@ Statement SingleStatement() :
         LOOKAHEAD(ShowTables())
         stm = ShowTables()
         |
+        LOOKAHEAD(ShowCreateView())
+        stm = ShowCreateView() 
+        |
         stm = Show()
         |
         stm = Use()
@@ -622,6 +630,8 @@ Statement SingleStatement() :
         |
         stm = Comment()
         |
+        stm = ComputeStats()
+        |
         stm = Describe()
         |
         stm = Explain()
@@ -629,6 +639,8 @@ Statement SingleStatement() :
         stm = Declare()
         |
         stm = Grant()
+        |
+        stm = Revoke() 
         |
         stm = PurgeStatement()
         |
@@ -892,6 +904,15 @@ RenameTableStatement RenameTableStatement(): {
         return renameTableStatement;
     }
 }
+
+ComputeStatsStatement ComputeStats(): {
+    Table table;
+} {
+    <K_COMPUTE> [ <K_INCREMENTAL> ] <K_STATS> table = Table()
+    {
+        return new ComputeStatsStatement(table);
+    }
+}  
 
 PurgeStatement PurgeStatement(): {
     PurgeStatement purgeStatement = null;
@@ -3066,7 +3087,7 @@ Expression RegularCondition() #RegularCondition:
     | token=<OP_NOTEQUALSBANG> { result = new NotEqualsTo(token.image); }
     | "@@" { result = new Matches(); }
     | "~" { result = new RegExpMatchOperator(RegExpMatchOperatorType.MATCH_CASESENSITIVE); }
-    | [<K_NOT> { not=true; } ] <K_REGEXP> [ <K_BINARY> { binary=true; } ] { result = new RegExpMySQLOperator(not, binary?RegExpMatchOperatorType.MATCH_CASESENSITIVE:RegExpMatchOperatorType.MATCH_CASEINSENSITIVE); }
+    | [<K_NOT> { not=true; } ] (<K_REGEXP> | <K_IREGEXP>) [ <K_BINARY> { binary=true; } ] { result = new RegExpMySQLOperator(not, binary?RegExpMatchOperatorType.MATCH_CASESENSITIVE:RegExpMatchOperatorType.MATCH_CASEINSENSITIVE); }
     | <K_RLIKE> [ <K_BINARY> { binary=true; } ] { result = new RegExpMySQLOperator(binary?RegExpMatchOperatorType.MATCH_CASESENSITIVE:RegExpMatchOperatorType.MATCH_CASEINSENSITIVE).useRLike(); }
     | "~*" { result = new RegExpMatchOperator(RegExpMatchOperatorType.MATCH_CASEINSENSITIVE); }
     | "!~" { result = new RegExpMatchOperator(RegExpMatchOperatorType.NOT_MATCH_CASESENSITIVE); }
@@ -5077,6 +5098,16 @@ ColDataType ColDataType():
     }
 }
 
+ShowCreateView ShowCreateView():
+{
+    ShowCreateView showCreateView = new ShowCreateView();
+    Table view = null;
+}
+{    <K_SHOW> <K_CREATE>
+    <K_VIEW> view=Table() { showCreateView.setView(view); }
+    { return showCreateView; }
+}
+
 CreateView CreateView():
 {
     CreateView createView = new CreateView();
@@ -5086,7 +5117,7 @@ CreateView CreateView():
 }
 {
     <K_CREATE>
-    [ <K_OR> <K_REPLACE> { createView.setOrReplace(true);} ]
+    [ (<K_OR> <K_REPLACE> | <K_IF> <K_EXISTS>) { createView.setOrReplace(true);} ]
     [
         <K_NO> <K_FORCE> { createView.setForce(ForceOption.NO_FORCE); }
         | <K_FORCE> { createView.setForce(ForceOption.FORCE); }
@@ -6019,6 +6050,7 @@ Grant Grant():
             [readGrantTypes(privileges) (<K_COMMA> readGrantTypes(privileges))*]
             <K_ON>
                 (
+                    [ <K_TABLE > | <K_VIEW > ]
                     objName=RelObjectNameList()   { grant.setObjectName(objName); }
                 )
             )
@@ -6034,6 +6066,39 @@ Grant Grant():
             }
 		return grant;
 	}
+}
+
+Revoke Revoke():
+{
+    Revoke revoke = new Revoke();
+    ArrayList<String> privileges = new ArrayList<String>();
+    List<String> users;
+    Token tk = null;
+        List<String> objName;
+}
+{
+    <K_REVOKE>
+    (
+        (
+            [readGrantTypes(privileges) (<K_COMMA> readGrantTypes(privileges))*]
+            <K_ON>
+                (
+                    [ <K_TABLE > | <K_VIEW > ]
+                    objName=RelObjectNameList()   { revoke.setObjectName(objName); }
+                )
+            )
+            |
+            (
+                tk=<S_IDENTIFIER> { revoke.setRole(tk.image); }
+            )
+        )
+    <K_FROM> (users = UsersList() {revoke.setUsers(users);})
+    {
+            if(privileges.size() > 0) {
+                revoke.setPrivileges(privileges);
+            }
+        return revoke;
+    }
 }
 
 List<String> UsersList():

@@ -13,12 +13,14 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
+import net.sf.jsqlparser.JSQLParserException;
 import net.sf.jsqlparser.expression.*;
 import net.sf.jsqlparser.expression.operators.arithmetic.*;
 import net.sf.jsqlparser.expression.operators.conditional.AndExpression;
 import net.sf.jsqlparser.expression.operators.conditional.OrExpression;
 import net.sf.jsqlparser.expression.operators.conditional.XorExpression;
 import net.sf.jsqlparser.expression.operators.relational.*;
+import net.sf.jsqlparser.parser.CCJSqlParserUtil;
 import net.sf.jsqlparser.schema.Column;
 import net.sf.jsqlparser.schema.Table;
 import net.sf.jsqlparser.statement.*;
@@ -75,22 +77,37 @@ import net.sf.jsqlparser.statement.values.ValuesStatement;
  * <p>Override extractTableName method to modify the extracted table names (e.g. without schema).
  */
 @SuppressWarnings({"PMD.CyclomaticComplexity", "PMD.UncommentedEmptyMethodBody"})
-public class TablesNamesFinder implements SelectVisitor, FromItemVisitor, ExpressionVisitor, ItemsListVisitor, SelectItemVisitor, StatementVisitor {
+public class SqlAnalyser implements SelectVisitor, FromItemVisitor, ExpressionVisitor, ItemsListVisitor, SelectItemVisitor, StatementVisitor {
 
     private static final String NOT_SUPPORTED_YET = "Not supported yet.";
+    private List<String> tables_read;
+    private List<String> tables_write;
     private List<String> tables;
     private boolean allowColumnProcessing = false;
 
     private List<String> otherItemNames;
 
-    public List<String> getTableList(Statement statement) {
+    private void setReadOnly(boolean readonly) {
+        tables = readonly ? tables_read : tables_write;
+    }
+
+    public List<String> getTablesRead() {
+      return tables_read;
+    }
+    
+    public List<String> getTablesWrite() {
+      return tables_write;
+    }
+    
+    public void analyse(String sql) throws JSQLParserException {
+        Statement statement = CCJSqlParserUtil.parse(sql);
         init(false);
         statement.accept(this);
-        return tables;
     }
 
     @Override
     public void visit(Select select) {
+        setReadOnly(true);
         if (select.getWithItemsList() != null) {
             for (WithItem withItem : select.getWithItemsList()) {
                 withItem.accept(this);
@@ -99,23 +116,16 @@ public class TablesNamesFinder implements SelectVisitor, FromItemVisitor, Expres
         select.getSelectBody().accept(this);
     }
 
-    /**
-     * Main entry for this Tool class. A list of found tables is returned.
-     */
-    public List<String> getTableList(Expression expr) {
-        init(true);
-        expr.accept(this);
-        return tables;
-    }
-
     @Override
     public void visit(WithItem withItem) {
+        setReadOnly(true);
         otherItemNames.add(withItem.getName().toLowerCase());
-    withItem.getSubSelect().accept((ItemsListVisitor) this);
+        withItem.getSubSelect().accept((ItemsListVisitor) this);
     }
 
     @Override
     public void visit(PlainSelect plainSelect) {
+        setReadOnly(true);
         if (plainSelect.getSelectItems() != null) {
             for (SelectItem item : plainSelect.getSelectItems()) {
                 item.accept(this);
@@ -158,13 +168,14 @@ public class TablesNamesFinder implements SelectVisitor, FromItemVisitor, Expres
     public void visit(Table tableName) {
         String tableWholeName = extractTableName(tableName);
         if (!otherItemNames.contains(tableWholeName.toLowerCase())
-                && !tables.contains(tableWholeName)) {
+                && !tables_read.contains(tableWholeName)) {
             tables.add(tableWholeName);
         }
     }
 
     @Override
     public void visit(SubSelect subSelect) {
+        setReadOnly(true);
         if (subSelect.getWithItemsList() != null) {
             for (WithItem withItem : subSelect.getWithItemsList()) {
                 withItem.accept(this);
@@ -493,6 +504,7 @@ public class TablesNamesFinder implements SelectVisitor, FromItemVisitor, Expres
 
     @Override
     public void visit(LateralSubSelect lateralSubSelect) {
+        setReadOnly(true);
         lateralSubSelect.getSubSelect().getSelectBody().accept(this);
     }
 
@@ -518,7 +530,9 @@ public class TablesNamesFinder implements SelectVisitor, FromItemVisitor, Expres
      */
     protected void init(boolean allowColumnProcessing) {
         otherItemNames = new ArrayList<String>();
-        tables = new ArrayList<String>();
+        tables_read = new ArrayList<String>();
+        tables_write = new ArrayList<String>();
+        tables = tables_write; 
         this.allowColumnProcessing = allowColumnProcessing;
     }
 
@@ -611,8 +625,9 @@ public class TablesNamesFinder implements SelectVisitor, FromItemVisitor, Expres
 
     @Override
     public void visit(Delete delete) {
+        setReadOnly(false);
         visit(delete.getTable());
-
+        setReadOnly(true);
         if (delete.getUsingList() != null) {
             for (Table using : delete.getUsingList()) {
                 visit(using);
@@ -632,7 +647,9 @@ public class TablesNamesFinder implements SelectVisitor, FromItemVisitor, Expres
 
     @Override
     public void visit(Update update) {
+        setReadOnly(false);
         visit(update.getTable());
+        setReadOnly(true);
         if (update.getStartJoins() != null) {
             for (Join join : update.getStartJoins()) {
                 join.getRightItem().accept(this);
@@ -661,7 +678,9 @@ public class TablesNamesFinder implements SelectVisitor, FromItemVisitor, Expres
 
     @Override
     public void visit(Insert insert) {
+        setReadOnly(false);
         visit(insert.getTable());
+        setReadOnly(true);
         if (insert.getItemsList() != null) {
             insert.getItemsList().accept(this);
         }
@@ -672,7 +691,9 @@ public class TablesNamesFinder implements SelectVisitor, FromItemVisitor, Expres
 
     @Override
     public void visit(Replace replace) {
+        setReadOnly(false);
         visit(replace.getTable());
+        setReadOnly(true);
         if (replace.getExpressions() != null) {
             for (Expression expression : replace.getExpressions()) {
                 expression.accept(this);
@@ -685,12 +706,16 @@ public class TablesNamesFinder implements SelectVisitor, FromItemVisitor, Expres
 
     @Override
     public void visit(Drop drop) {
+        setReadOnly(false);
         visit(drop.getName());
+        setReadOnly(true);
     }
 
     @Override
     public void visit(Truncate truncate) {
+        setReadOnly(false);
         visit(truncate.getTable());
+        setReadOnly(true);
     }
 
     @Override
@@ -705,7 +730,9 @@ public class TablesNamesFinder implements SelectVisitor, FromItemVisitor, Expres
 
     @Override
     public void visit(CreateTable create) {
+        setReadOnly(false);
         visit(create.getTable());
+        setReadOnly(true);
         if (create.getSelect() != null) {
             create.getSelect().accept(this);
         }
@@ -713,7 +740,9 @@ public class TablesNamesFinder implements SelectVisitor, FromItemVisitor, Expres
 
     @Override
     public void visit(CreateView createView) {
+      setReadOnly(false);
       visit(createView.getView());
+      setReadOnly(true);
       if (createView.getSelect() != null) {
           createView.getSelect().accept(this);
       }
@@ -721,7 +750,9 @@ public class TablesNamesFinder implements SelectVisitor, FromItemVisitor, Expres
 
     @Override
     public void visit(Alter alter) {
+      setReadOnly(false);
       visit(alter.getTable());
+      setReadOnly(true);
     }
 
     @Override
@@ -748,8 +779,8 @@ public class TablesNamesFinder implements SelectVisitor, FromItemVisitor, Expres
     public void visit(ShowColumnsStatement set) {
       String tableWholeName = set.getTableName();
       if (!otherItemNames.contains(tableWholeName.toLowerCase())
-              && !tables.contains(tableWholeName)) {
-          tables.add(tableWholeName);
+              && !tables_read.contains(tableWholeName)) {
+          tables_read.add(tableWholeName);
       }
     }
 
@@ -773,7 +804,9 @@ public class TablesNamesFinder implements SelectVisitor, FromItemVisitor, Expres
 
     @Override
     public void visit(Merge merge) {
+        setReadOnly(false);
         visit(merge.getTable());
+        setReadOnly(true);
         if (merge.getUsingTable() != null) {
             merge.getUsingTable().accept(this);
         } else if (merge.getUsingSelect() != null) {
@@ -793,7 +826,9 @@ public class TablesNamesFinder implements SelectVisitor, FromItemVisitor, Expres
 
     @Override
     public void visit(AlterView alterView) {
+        setReadOnly(false);
         visit(alterView.getView());
+        setReadOnly(true);
         if (alterView.getSelectBody() != null) {
           alterView.getSelectBody().accept(this);
       }
@@ -818,7 +853,9 @@ public class TablesNamesFinder implements SelectVisitor, FromItemVisitor, Expres
 
     @Override
     public void visit(Upsert upsert) {
+        setReadOnly(false);
         visit(upsert.getTable());
+        setReadOnly(true);
         if (upsert.getItemsList() != null) {
             upsert.getItemsList().accept(this);
         }
@@ -864,16 +901,19 @@ public class TablesNamesFinder implements SelectVisitor, FromItemVisitor, Expres
 
     @Override
     public void visit(DescribeStatement describe) {
+        setReadOnly(true);
         describe.getTable().accept(this);
     }
     
     @Override
     public void visit(ComputeStatsStatement compute) {
+        setReadOnly(true);
         compute.getTable().accept(this);
     }
 
     @Override
     public void visit(ExplainStatement explain) {
+        setReadOnly(false);
         explain.getStatement().accept(this);
     }
 
@@ -889,7 +929,7 @@ public class TablesNamesFinder implements SelectVisitor, FromItemVisitor, Expres
 
     @Override
     public void visit(ShowStatement aThis) {
-    
+      setReadOnly(true);
     }
 
     @Override
@@ -904,13 +944,18 @@ public class TablesNamesFinder implements SelectVisitor, FromItemVisitor, Expres
 
     @Override
     public void visit(Grant grant) {
+        setReadOnly(false);
         tables.add(grant.getObjectName());
+        setReadOnly(true);
     }
 
     @Override
     public void visit(Revoke revoke) {
+        setReadOnly(false);
         tables.add(revoke.getObjectName());
+        setReadOnly(true);
     }
+
     
     @Override
     public void visit(ArrayExpression array) {
@@ -1030,17 +1075,21 @@ public class TablesNamesFinder implements SelectVisitor, FromItemVisitor, Expres
     
     @Override
     public void visit(RenameTableStatement renameTableStatement) {
+        setReadOnly(false);
         for (Map.Entry<Table, Table> e : renameTableStatement.getTableNames()) {
             e.getKey().accept(this);
             e.getValue().accept(this);
           }
+        setReadOnly(true);
     }
   
     @Override
     public void visit(PurgeStatement purgeStatement) {
+        setReadOnly(false);
         if (purgeStatement.getPurgeObjectType()== PurgeObjectType.TABLE) {
             ((Table) purgeStatement.getObject()).accept(this);
         }
+        setReadOnly(true);
     }
 
     @Override
@@ -1050,6 +1099,8 @@ public class TablesNamesFinder implements SelectVisitor, FromItemVisitor, Expres
 
     @Override
     public void visit(ShowCreateView showCreateView) {
-      visit(showCreateView.getView());
+        setReadOnly(true);
+        visit(showCreateView.getView());
+      
     }
 }

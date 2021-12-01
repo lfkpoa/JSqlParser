@@ -14,6 +14,7 @@ import java.util.stream.Collectors;
 
 import net.sf.jsqlparser.statement.Block;
 import net.sf.jsqlparser.statement.Commit;
+import net.sf.jsqlparser.statement.ComputeStatsStatement;
 import net.sf.jsqlparser.statement.CreateFunctionalStatement;
 import net.sf.jsqlparser.statement.DeclareStatement;
 import net.sf.jsqlparser.statement.DescribeStatement;
@@ -47,11 +48,13 @@ import net.sf.jsqlparser.statement.delete.Delete;
 import net.sf.jsqlparser.statement.drop.Drop;
 import net.sf.jsqlparser.statement.execute.Execute;
 import net.sf.jsqlparser.statement.grant.Grant;
+import net.sf.jsqlparser.statement.grant.Revoke;
 import net.sf.jsqlparser.statement.insert.Insert;
 import net.sf.jsqlparser.statement.merge.Merge;
 import net.sf.jsqlparser.statement.replace.Replace;
 import net.sf.jsqlparser.statement.select.Select;
 import net.sf.jsqlparser.statement.select.WithItem;
+import net.sf.jsqlparser.statement.show.ShowCreateView;
 import net.sf.jsqlparser.statement.show.ShowTablesStatement;
 import net.sf.jsqlparser.statement.truncate.Truncate;
 import net.sf.jsqlparser.statement.update.Update;
@@ -292,6 +295,12 @@ public class StatementDeParser extends AbstractDeParser<Statement> implements St
     }
 
     @Override
+    public void visit(ComputeStatsStatement compute) {
+      buffer.append("COMPUTE STATS ");
+      buffer.append(compute.getTable());
+    }
+    
+    @Override
     public void visit(ExplainStatement explain) {
         buffer.append("EXPLAIN ");
         if (explain.getOptions() != null) {
@@ -319,6 +328,12 @@ public class StatementDeParser extends AbstractDeParser<Statement> implements St
         grantDeParser.deParse(grant);
     }
 
+    @Override
+    public void visit(Revoke revoke) {
+        RevokeDeParser revokeDeParser = new RevokeDeParser(buffer);
+        revokeDeParser.deParse(revoke);
+    }
+    
     @Override
     public void visit(CreateSchema aThis) {
         buffer.append(aThis.toString());
@@ -372,5 +387,10 @@ public class StatementDeParser extends AbstractDeParser<Statement> implements St
     @Override
     public void visit(AlterSystemStatement alterSystemStatement) {
         alterSystemStatement.appendTo(buffer);
+    }
+
+    @Override
+    public void visit(ShowCreateView showCreateView) {
+        buffer.append(showCreateView.toString());
     }
 }

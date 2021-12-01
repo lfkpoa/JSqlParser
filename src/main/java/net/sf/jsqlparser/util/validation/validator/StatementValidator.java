@@ -12,6 +12,7 @@ package net.sf.jsqlparser.util.validation.validator;
 import net.sf.jsqlparser.parser.feature.Feature;
 import net.sf.jsqlparser.statement.Block;
 import net.sf.jsqlparser.statement.Commit;
+import net.sf.jsqlparser.statement.ComputeStatsStatement;
 import net.sf.jsqlparser.statement.CreateFunctionalStatement;
 import net.sf.jsqlparser.statement.DeclareStatement;
 import net.sf.jsqlparser.statement.DescribeStatement;
@@ -47,10 +48,12 @@ import net.sf.jsqlparser.statement.delete.Delete;
 import net.sf.jsqlparser.statement.drop.Drop;
 import net.sf.jsqlparser.statement.execute.Execute;
 import net.sf.jsqlparser.statement.grant.Grant;
+import net.sf.jsqlparser.statement.grant.Revoke;
 import net.sf.jsqlparser.statement.insert.Insert;
 import net.sf.jsqlparser.statement.merge.Merge;
 import net.sf.jsqlparser.statement.replace.Replace;
 import net.sf.jsqlparser.statement.select.Select;
+import net.sf.jsqlparser.statement.show.ShowCreateView;
 import net.sf.jsqlparser.statement.show.ShowTablesStatement;
 import net.sf.jsqlparser.statement.truncate.Truncate;
 import net.sf.jsqlparser.statement.update.Update;
@@ -215,6 +218,12 @@ public class StatementValidator extends AbstractValidator<Statement> implements 
     }
 
     @Override
+    public void visit(ComputeStatsStatement compute) {
+      //validateFeature(Feature.computeStats);
+      validateOptionalFromItem(compute.getTable());
+    }
+    
+    @Override
     public void visit(ExplainStatement explain) {
         validateFeature(Feature.explain);
         explain.getStatement().accept(this);
@@ -231,6 +240,11 @@ public class StatementValidator extends AbstractValidator<Statement> implements 
         getValidator(GrantValidator.class).validate(grant);
     }
 
+    @Override
+    public void visit(Revoke revoke) {
+        getValidator(RevokeValidator.class).validate(revoke);
+    }
+    
     @Override
     public void visit(CreateSchema aThis) {
         validateFeatureAndName(Feature.createSchema, NamedObject.schema, aThis.getSchemaName());
@@ -302,5 +316,11 @@ public class StatementValidator extends AbstractValidator<Statement> implements 
     @Override
     public void visit(AlterSystemStatement alterSystemStatement) {
         //TODO: not yet implemented
+    }
+
+    @Override
+    public void visit(ShowCreateView showCreateView) {
+      // TODO: not yet implemented
+      
     }
 }
